@@ -1,23 +1,26 @@
 const path = require("path"),
-  util = require("util"),
   fs = require("fs");
 
-const readdir = util.promisify(fs.readdir);
-const stat = util.promisify(fs.stat);
+const readdir = fs.readdir;
+const stat = fs.stat;
 
-(async () => {
+(() => {
   const targetDirectory = process.argv[2];
 
   if (!targetDirectory) {
     console.log("Specify the target directory");
     return;
   }
-  const files = await getFilesDir(targetDirectory);
-  const sortFiles = sort(files);
-  console.log(sortFiles);
-  changeDirFiles(sortFiles, targetDirectory);
+
+  getFilesDir(targetDirectory, sortFiles);
 })();
-function changeDirFiles(files, targetDirectory) {
+
+function sortFiles(files) {
+  const sortFiles = sort(files);
+  changeDirFiles(sortFiles);
+}
+
+function changeDirFiles(files) {
   files.forEach((element) => {
     const oldPath = path.join(__dirname, element.path);
     const newPathDir = path.join(__dirname, "build", element.title[0]);
@@ -35,6 +38,7 @@ function changeDirFiles(files, targetDirectory) {
     });
   });
 }
+
 function sort(files) {
   return files.sort((a, b) => {
     if (a.title > b.title) {
@@ -46,25 +50,42 @@ function sort(files) {
     return 0;
   });
 }
-async function getFilesDir(targetDirectory) {
+function getFilesDir(targetDirectory, mainCB) {
   let files = [];
-  const filesInDirectory = await readdir(targetDirectory);
 
-  for (const file of filesInDirectory) {
-    await checkItem(file);
-  }
-  async function checkItem(item) {
-    const itemPath = path.join(targetDirectory, item);
-    const stats = await stat(itemPath);
-
-    if (stats.isDirectory()) {
-      files = [...(await getFilesDir(itemPath)), ...files];
+  readdir(targetDirectory, (err, files) => {
+    if (!err) {
+      fileIterator(files, checkItem);
     } else {
-      files.push({
-        title: item,
-        path: itemPath,
-      });
+      console.log(err);
+    }
+  });
+
+  function checkItem(item, callback) {
+    const itemPath = path.join(targetDirectory, item);
+
+    stat(itemPath, (err, stat) => {
+      if (stat.isDirectory()) {
+        files = [...getFilesDir(itemPath), ...files];
+      } else {
+        files.push({
+          title: item,
+          path: itemPath,
+        });
+      }
+      callback && callback(files);
+    });
+  }
+
+  function fileIterator(files, callback) {
+    const numberOfFiles = files.length;
+    let iterationNumber = 1;
+    for (const file of files) {
+      if (numberOfFiles === ++iterationNumber) {
+        callback(file);
+      } else {
+        callback(file, mainCB);
+      }
     }
   }
-  return files;
 }
